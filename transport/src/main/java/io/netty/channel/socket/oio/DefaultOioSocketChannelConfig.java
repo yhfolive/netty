@@ -26,6 +26,7 @@ import io.netty.channel.socket.SocketChannel;
 import java.io.IOException;
 import java.net.Socket;
 import java.util.Map;
+import java.util.concurrent.Executor;
 
 import static io.netty.channel.ChannelOption.*;
 
@@ -38,8 +39,15 @@ public class DefaultOioSocketChannelConfig extends DefaultSocketChannelConfig im
         super(channel, javaSocket);
     }
 
-    DefaultOioSocketChannelConfig(OioSocketChannel channel, Socket javaSocket) {
+    DefaultOioSocketChannelConfig(final OioSocketChannel channel, Socket javaSocket) {
         super(channel, javaSocket);
+        // OIO is blocking anyway so just use the EventLoop to do IO operations when SO_LINGER is used.
+        setSoLingerIoExecutor(new Executor() {
+            @Override
+            public void execute(Runnable command) {
+                channel.eventLoop().execute(command);
+            }
+        });
     }
 
     @Override
@@ -206,6 +214,12 @@ public class DefaultOioSocketChannelConfig extends DefaultSocketChannelConfig im
     @Override
     public OioSocketChannelConfig setMessageSizeEstimator(MessageSizeEstimator estimator) {
         super.setMessageSizeEstimator(estimator);
+        return this;
+    }
+
+    @Override
+    public OioSocketChannelConfig setSoLingerIoExecutor(Executor soLingerCloseExecutor) {
+        super.setSoLingerIoExecutor(soLingerCloseExecutor);
         return this;
     }
 }

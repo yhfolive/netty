@@ -21,11 +21,13 @@ import io.netty.channel.ChannelOption;
 import io.netty.channel.DefaultChannelConfig;
 import io.netty.channel.MessageSizeEstimator;
 import io.netty.channel.RecvByteBufAllocator;
+import io.netty.util.concurrent.GlobalEventExecutor;
 import io.netty.util.internal.PlatformDependent;
 
 import java.net.Socket;
 import java.net.SocketException;
 import java.util.Map;
+import java.util.concurrent.Executor;
 
 import static io.netty.channel.ChannelOption.*;
 
@@ -34,9 +36,11 @@ import static io.netty.channel.ChannelOption.*;
  */
 public class DefaultSocketChannelConfig extends DefaultChannelConfig
                                         implements SocketChannelConfig {
+    private static final Executor DEFAULT_SO_LINGER_CLOSE_EXECUTOR = GlobalEventExecutor.INSTANCE;
 
     protected final Socket javaSocket;
     private volatile boolean allowHalfClosure;
+    private volatile Executor soLingerIoExecutor = DEFAULT_SO_LINGER_CLOSE_EXECUTOR;
 
     /**
      * Creates a new instance.
@@ -63,7 +67,7 @@ public class DefaultSocketChannelConfig extends DefaultChannelConfig
         return getOptions(
                 super.getOptions(),
                 SO_RCVBUF, SO_SNDBUF, TCP_NODELAY, SO_KEEPALIVE, SO_REUSEADDR, SO_LINGER, IP_TOS,
-                ALLOW_HALF_CLOSURE);
+                ALLOW_HALF_CLOSURE, SO_LINGER_IO_EXECUTOR);
     }
 
     @SuppressWarnings("unchecked")
@@ -93,7 +97,9 @@ public class DefaultSocketChannelConfig extends DefaultChannelConfig
         if (option == ALLOW_HALF_CLOSURE) {
             return (T) Boolean.valueOf(isAllowHalfClosure());
         }
-
+        if (option == SO_LINGER_IO_EXECUTOR) {
+            return (T) getSoLingerIoExecutor();
+        }
         return super.getOption(option);
     }
 
@@ -117,6 +123,8 @@ public class DefaultSocketChannelConfig extends DefaultChannelConfig
             setTrafficClass((Integer) value);
         } else if (option == ALLOW_HALF_CLOSURE) {
             setAllowHalfClosure((Boolean) value);
+        } else if (option == SO_LINGER_IO_EXECUTOR) {
+            setSoLingerIoExecutor((Executor) value);
         } else {
             return super.setOption(option, value);
         }
@@ -336,6 +344,26 @@ public class DefaultSocketChannelConfig extends DefaultChannelConfig
     @Override
     public SocketChannelConfig setMessageSizeEstimator(MessageSizeEstimator estimator) {
         super.setMessageSizeEstimator(estimator);
+        return this;
+    }
+
+    /**
+     * Returns the {@link Executor} that is used to execute the close or shutdown of the underlying socket when
+     * {@code SO_LINGER} is used.
+     */
+    public Executor getSoLingerIoExecutor() {
+        return soLingerIoExecutor;
+    }
+
+    /**
+     * Sets the {@link Executor} that is used to execute the close or shutdown of the underlying socket when
+     * {@code SO_LINGER} is used.
+     */
+    public SocketChannelConfig setSoLingerIoExecutor(Executor soLingerIoExecutor) {
+        if (soLingerIoExecutor == null) {
+            throw new NullPointerException("soLingerIoExecutor");
+        }
+        this.soLingerIoExecutor = soLingerIoExecutor;
         return this;
     }
 }

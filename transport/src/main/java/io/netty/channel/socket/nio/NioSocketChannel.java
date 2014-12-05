@@ -38,6 +38,7 @@ import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
 import java.nio.channels.spi.SelectorProvider;
+import java.util.concurrent.Executor;
 
 /**
  * {@link io.netty.channel.socket.SocketChannel} which uses NIO selector based implementation.
@@ -150,11 +151,18 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
     public ChannelFuture shutdownOutput(final ChannelPromise promise) {
         EventLoop loop = eventLoop();
         if (loop.inEventLoop()) {
-            try {
-                javaChannel().socket().shutdownOutput();
-                promise.setSuccess();
-            } catch (Throwable t) {
-                promise.setFailure(t);
+            final Socket socket = javaChannel().socket();
+
+            Executor closeExecutor = soLingerIoExecutor();
+            if (closeExecutor != null) {
+                closeExecutor.execute(new OneTimeTask() {
+                    @Override
+                    public void run() {
+                        shutdownOutput0(socket, promise);
+                    }
+                });
+            } else {
+                shutdownOutput0(socket, promise);
             }
         } else {
             loop.execute(new OneTimeTask() {
@@ -165,6 +173,15 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
             });
         }
         return promise;
+    }
+
+    private static void shutdownOutput0(Socket socket, ChannelPromise promise) {
+        try {
+            socket.shutdownOutput();
+            promise.setSuccess();
+        } catch (Throwable t) {
+            promise.setFailure(t);
+        }
     }
 
     @Override

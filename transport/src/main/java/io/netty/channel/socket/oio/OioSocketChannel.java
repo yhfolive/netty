@@ -25,6 +25,7 @@ import io.netty.channel.EventLoop;
 import io.netty.channel.oio.OioByteStreamChannel;
 import io.netty.channel.socket.ServerSocketChannel;
 import io.netty.channel.socket.SocketChannel;
+import io.netty.util.internal.OneTimeTask;
 import io.netty.util.internal.logging.InternalLogger;
 import io.netty.util.internal.logging.InternalLoggerFactory;
 
@@ -33,6 +34,7 @@ import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.SocketAddress;
 import java.net.SocketTimeoutException;
+import java.util.concurrent.Executor;
 
 /**
  * A {@link SocketChannel} which is using Old-Blocking-IO
@@ -142,24 +144,38 @@ public class OioSocketChannel extends OioByteStreamChannel
     }
 
     @Override
-    public ChannelFuture shutdownOutput(final ChannelPromise future) {
+    public ChannelFuture shutdownOutput(final ChannelPromise promise) {
         EventLoop loop = eventLoop();
         if (loop.inEventLoop()) {
-            try {
-                socket.shutdownOutput();
-                future.setSuccess();
-            } catch (Throwable t) {
-                future.setFailure(t);
+            Executor closeExecutor = soLingerIoExecutor();
+            if (closeExecutor != null) {
+                closeExecutor.execute(new OneTimeTask() {
+                    @Override
+                    public void run() {
+                        shutdownOutput0(socket, promise);
+                    }
+                });
+            } else {
+                shutdownOutput0(socket, promise);
             }
         } else {
             loop.execute(new Runnable() {
                 @Override
                 public void run() {
-                    shutdownOutput(future);
+                    shutdownOutput(promise);
                 }
             });
         }
-        return future;
+        return promise;
+    }
+
+    private static void shutdownOutput0(Socket socket, ChannelPromise promise) {
+        try {
+            socket.shutdownOutput();
+            promise.setSuccess();
+        } catch (Throwable t) {
+            promise.setFailure(t);
+        }
     }
 
     @Override

@@ -22,6 +22,7 @@ import io.netty.util.internal.PlatformDependent;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.Executor;
 
 /**
  * A {@link ChannelOption} allows to configure a {@link ChannelConfig} in a type-safe
@@ -64,6 +65,8 @@ public class ChannelOption<T> extends UniqueName {
     public static final ChannelOption<Integer> SO_RCVBUF = valueOf("SO_RCVBUF");
     public static final ChannelOption<Boolean> SO_REUSEADDR = valueOf("SO_REUSEADDR");
     public static final ChannelOption<Integer> SO_LINGER = valueOf("SO_LINGER");
+    public static final ChannelOption<Executor> SO_LINGER_IO_EXECUTOR = valueOf("SO_LINGER_IO_EXECUTOR");
+
     public static final ChannelOption<Integer> SO_BACKLOG = valueOf("SO_BACKLOG");
     public static final ChannelOption<Integer> SO_TIMEOUT = valueOf("SO_TIMEOUT");
 

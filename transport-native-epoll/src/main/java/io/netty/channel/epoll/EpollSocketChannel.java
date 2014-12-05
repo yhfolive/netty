@@ -33,6 +33,7 @@ import io.netty.channel.RecvByteBufAllocator;
 import io.netty.channel.socket.ChannelInputShutdownEvent;
 import io.netty.channel.socket.ServerSocketChannel;
 import io.netty.channel.socket.SocketChannel;
+import io.netty.util.internal.OneTimeTask;
 import io.netty.util.internal.PlatformDependent;
 import io.netty.util.internal.StringUtil;
 
@@ -40,6 +41,7 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.nio.ByteBuffer;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -443,12 +445,16 @@ public final class EpollSocketChannel extends AbstractEpollChannel implements So
     public ChannelFuture shutdownOutput(final ChannelPromise promise) {
         EventLoop loop = eventLoop();
         if (loop.inEventLoop()) {
-            try {
-                Native.shutdown(fd, false, true);
-                outputShutdown = true;
-                promise.setSuccess();
-            } catch (Throwable t) {
-                promise.setFailure(t);
+            Executor closeExecutor = soLingerIoExecutor();
+            if (closeExecutor != null) {
+                closeExecutor.execute(new OneTimeTask() {
+                    @Override
+                    public void run() {
+                        shutdownOutput0(promise);
+                    }
+                });
+            } else {
+                shutdownOutput0(promise);
             }
         } else {
             loop.execute(new Runnable() {
@@ -459,6 +465,16 @@ public final class EpollSocketChannel extends AbstractEpollChannel implements So
             });
         }
         return promise;
+    }
+
+    private void shutdownOutput0(ChannelPromise promise) {
+        try {
+            Native.shutdown(fd, false, true);
+            outputShutdown = true;
+            promise.setSuccess();
+        } catch (Throwable t) {
+            promise.setFailure(t);
+        }
     }
 
     @Override

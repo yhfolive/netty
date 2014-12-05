@@ -29,10 +29,12 @@ import java.io.IOException;
 import java.net.ConnectException;
 import java.net.InetSocketAddress;
 import java.net.NoRouteToHostException;
+import java.net.Socket;
 import java.net.SocketAddress;
 import java.net.SocketException;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.NotYetConnectedException;
+import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 
 /**
@@ -549,11 +551,39 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 safeSetSuccess(promise);
                 return;
             }
+            if (outboundBuffer == null) {
+                // This means close() was called before so we just register a listener and return
+                closeFuture.addListener(new ChannelFutureListener() {
+                    @Override
+                    public void operationComplete(ChannelFuture future) throws Exception {
+                        if (future.isSuccess()) {
+                            promise.setSuccess();
+                        } else {
+                            promise.setFailure(future.cause());
+                        }
+                    }
+                });
+                return;
+            }
 
-            boolean wasActive = isActive();
-            ChannelOutboundBuffer outboundBuffer = this.outboundBuffer;
-            this.outboundBuffer = null; // Disallow adding any messages and flushes to outboundBuffer.
+            final boolean wasActive = isActive();
+            final ChannelOutboundBuffer buffer = outboundBuffer;
+            outboundBuffer = null; // Disallow adding any messages and flushes to outboundBuffer.
 
+            Executor closeExecutor = soLingerIoExecutor();
+            if (closeExecutor != null) {
+                closeExecutor.execute(new OneTimeTask() {
+                    @Override
+                    public void run() {
+                        close0(buffer, wasActive, promise);
+                    }
+                });
+            } else {
+                close0(buffer, wasActive, promise);
+            }
+        }
+
+        private void close0(ChannelOutboundBuffer outboundBuffer, final boolean wasActive, ChannelPromise promise) {
             try {
                 doClose();
                 closeFuture.setClosed();
@@ -568,17 +598,27 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 outboundBuffer.failFlushed(CLOSED_CHANNEL_EXCEPTION);
                 outboundBuffer.close(CLOSED_CHANNEL_EXCEPTION);
             } finally {
-
-                if (wasActive && !isActive()) {
-                    invokeLater(new OneTimeTask() {
-                        @Override
-                        public void run() {
-                            pipeline.fireChannelInactive();
+                OneTimeTask closeTask = new OneTimeTask() {
+                    @Override
+                    public void run() {
+                        if (wasActive && !isActive()) {
+                            invokeLater(new OneTimeTask() {
+                                @Override
+                                public void run() {
+                                    pipeline.fireChannelInactive();
+                                }
+                            });
                         }
-                    });
-                }
 
-                deregister(voidPromise());
+                        deregister(voidPromise());
+                    }
+                };
+
+                if (eventLoop().inEventLoop()) {
+                    closeTask.run();
+                } else {
+                    invokeLater(closeTask);
+                }
             }
         }
 
@@ -868,6 +908,29 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
      */
     protected Object filterOutboundMessage(Object msg) throws Exception {
         return msg;
+    }
+
+    /**
+     * @return Executor to execute {@link Socket#close()} and {@link Socket#shutdownOutput()})
+     * operation in, if {@code SO_LINGER} option is set close() / shutdown() syscall could block even for non-blocking
+     * sockets and can't be executed in the eventLoop context, if {@link ChannelOption#SO_LINGER} or
+     * {@link ChannelOption#SO_LINGER_IO_EXECUTOR}SO_LINGER_IO_EXECUTOR options weren't set this method is going to
+     * return {@code null}.
+     */
+    protected final Executor soLingerIoExecutor() {
+        ChannelConfig config = config();
+
+        // If channel is inactive already (means either failed to connect, disconnected or not bind)
+        // we will not be able to get SO_LINGER setting from such socket so instead
+        // we have to return what ever setting we have for SO_LINGER_IO_EXECUTOR to play it safe.
+        if (!isActive()) {
+            return config.getOption(ChannelOption.SO_LINGER_IO_EXECUTOR);
+        }
+
+        Integer soLinger = config.getOption(ChannelOption.SO_LINGER);
+        return (soLinger != null && soLinger > 0)
+                ? config.getOption(ChannelOption.SO_LINGER_IO_EXECUTOR)
+                : null;
     }
 
     static final class CloseFuture extends DefaultChannelPromise {

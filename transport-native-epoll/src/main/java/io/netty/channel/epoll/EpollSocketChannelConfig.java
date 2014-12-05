@@ -21,16 +21,21 @@ import io.netty.channel.DefaultChannelConfig;
 import io.netty.channel.MessageSizeEstimator;
 import io.netty.channel.RecvByteBufAllocator;
 import io.netty.channel.socket.SocketChannelConfig;
+import io.netty.util.concurrent.GlobalEventExecutor;
 import io.netty.util.internal.PlatformDependent;
 
 import java.util.Map;
+import java.util.concurrent.Executor;
 
 import static io.netty.channel.ChannelOption.*;
 
 public final class EpollSocketChannelConfig extends DefaultChannelConfig implements SocketChannelConfig {
 
+    private static final Executor DEFAULT_SO_LINGER_IO_EXECUTOR = GlobalEventExecutor.INSTANCE;
+
     private final EpollSocketChannel channel;
     private volatile boolean allowHalfClosure;
+    private volatile Executor soLingerIoExecutor = DEFAULT_SO_LINGER_IO_EXECUTOR;
 
     /**
      * Creates a new instance.
@@ -50,7 +55,7 @@ public final class EpollSocketChannelConfig extends DefaultChannelConfig impleme
                 super.getOptions(),
                 SO_RCVBUF, SO_SNDBUF, TCP_NODELAY, SO_KEEPALIVE, SO_REUSEADDR, SO_LINGER, IP_TOS,
                 ALLOW_HALF_CLOSURE, EpollChannelOption.TCP_CORK, EpollChannelOption.TCP_KEEPCNT,
-                EpollChannelOption.TCP_KEEPIDLE, EpollChannelOption.TCP_KEEPINTVL);
+                EpollChannelOption.TCP_KEEPIDLE, EpollChannelOption.TCP_KEEPINTVL, SO_LINGER_IO_EXECUTOR);
     }
 
     @SuppressWarnings("unchecked")
@@ -92,6 +97,9 @@ public final class EpollSocketChannelConfig extends DefaultChannelConfig impleme
         if (option == EpollChannelOption.TCP_KEEPCNT) {
             return (T) Integer.valueOf(getTcpKeepCnt());
         }
+        if (option == SO_LINGER_IO_EXECUTOR) {
+            return (T) getSoLingerIoExecutor();
+        }
         return super.getOption(option);
     }
 
@@ -123,6 +131,8 @@ public final class EpollSocketChannelConfig extends DefaultChannelConfig impleme
             setTcpKeepCntl((Integer) value);
         } else if (option == EpollChannelOption.TCP_KEEPINTVL) {
             setTcpKeepIntvl((Integer) value);
+        } else if (option == SO_LINGER_IO_EXECUTOR) {
+            setSoLingerIoExecutor((Executor) value);
         } else {
             return super.setOption(option, value);
         }
@@ -347,5 +357,25 @@ public final class EpollSocketChannelConfig extends DefaultChannelConfig impleme
     @Override
     protected void autoReadCleared() {
         channel.clearEpollIn();
+    }
+
+    /**
+     * Returns the {@link Executor} that is used to execute the close or shutdown of the underlying socket when
+     * {@code SO_LINGER} is used.
+     */
+    public Executor getSoLingerIoExecutor() {
+        return soLingerIoExecutor;
+    }
+
+    /**
+     * Sets the {@link Executor} that is used to execute the close or shutdown of the underlying socket when
+     * {@code SO_LINGER} is used.
+     */
+    public SocketChannelConfig setSoLingerIoExecutor(Executor soLingerIoExecutor) {
+        if (soLingerIoExecutor == null) {
+            throw new NullPointerException("soLingerIoExecutor");
+        }
+        this.soLingerIoExecutor = soLingerIoExecutor;
+        return this;
     }
 }
