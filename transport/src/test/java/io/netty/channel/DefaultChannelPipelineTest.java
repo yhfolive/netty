@@ -21,6 +21,7 @@ import io.netty.bootstrap.ServerBootstrap;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandler.Sharable;
+import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.channel.local.LocalAddress;
 import io.netty.channel.local.LocalChannel;
 import io.netty.channel.local.LocalEventLoopGroup;
@@ -28,6 +29,8 @@ import io.netty.channel.local.LocalServerChannel;
 import io.netty.util.AbstractReferenceCounted;
 import io.netty.util.ReferenceCountUtil;
 import io.netty.util.ReferenceCounted;
+import io.netty.util.concurrent.DefaultEventExecutorGroup;
+import io.netty.util.concurrent.EventExecutorGroup;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Test;
@@ -39,6 +42,7 @@ import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.Assert.*;
@@ -533,6 +537,90 @@ public class DefaultChannelPipelineTest {
     public void testLastHandlerEmptyPipeline() throws Exception {
         ChannelPipeline pipeline = new LocalChannel().pipeline();
         assertNull(pipeline.last());
+    }
+
+    @Test
+    public void testSurpressChannelReadComplete() throws Exception {
+        testSurpressChannelReadComplete0(false);
+    }
+
+    @Test
+    public void testSurpressChannelReadCompleteDifferentExecutors() throws Exception {
+        testSurpressChannelReadComplete0(true);
+    }
+
+    // See:
+    //  https://github.com/netty/netty/pull/3263
+    //  https://github.com/netty/netty/pull/3272
+    private static void testSurpressChannelReadComplete0(boolean executors) throws Exception {
+        final AtomicInteger read1 = new AtomicInteger();
+        final AtomicInteger read2 = new AtomicInteger();
+        final AtomicInteger readComplete1 = new AtomicInteger();
+        final AtomicInteger readComplete2 = new AtomicInteger();
+
+        final CountDownLatch latch = new CountDownLatch(1);
+
+        final EventExecutorGroup group = executors ? new DefaultEventExecutorGroup(2) : null;
+
+        EmbeddedChannel ch = new EmbeddedChannel(new ChannelInitializer<Channel>() {
+            @Override
+            protected void initChannel(Channel ch) throws Exception {
+                ch.pipeline().addLast(group, new ChannelInboundHandlerAdapter() {
+                    @Override
+                    public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+                        if (read1.incrementAndGet() == 1) {
+                            return;
+                        }
+                        ctx.fireChannelRead(msg);
+                    }
+
+                    @Override
+                    public void channelReadComplete(ChannelHandlerContext ctx) throws Exception {
+                        readComplete1.incrementAndGet();
+                        ctx.fireChannelReadComplete();
+                    }
+
+                });
+                ch.pipeline().addLast(group, new ChannelInboundHandlerAdapter() {
+                    @Override
+                    public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+                        read2.incrementAndGet();
+                        ctx.fireChannelRead(msg);
+                    }
+
+                    @Override
+                    public void channelReadComplete(ChannelHandlerContext ctx) throws Exception {
+                        readComplete2.incrementAndGet();
+                        ctx.fireChannelReadComplete();
+                    }
+
+                    @Override
+                    public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+                        latch.countDown();
+                    }
+                });
+            }
+        });
+
+
+        ch.writeInbound(1);
+        ch.writeInbound(2);
+        ch.writeInbound(3);
+        ch.finish();
+        latch.await();
+        assertEquals(3, read1.get());
+        assertEquals(3, readComplete1.get());
+
+        assertEquals(2, read2.get());
+        assertEquals(2, readComplete2.get());
+
+        assertEquals(2, ch.readInbound());
+        assertEquals(3, ch.readInbound());
+        assertNull(ch.readInbound());
+
+        if (group != null) {
+            group.shutdownGracefully();
+        }
     }
 
     private static int next(AbstractChannelHandlerContext ctx) {

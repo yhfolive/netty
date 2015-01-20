@@ -46,7 +46,6 @@ public class SpdyFrameCodec extends ByteToMessageDecoder
     private SpdySettingsFrame spdySettingsFrame;
 
     private ChannelHandlerContext ctx;
-    private boolean read;
 
     /**
      * Creates a new instance with the specified {@code version} and
@@ -94,15 +93,6 @@ public class SpdyFrameCodec extends ByteToMessageDecoder
     @Override
     protected void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) throws Exception {
         spdyFrameDecoder.decode(in);
-    }
-
-    @Override
-    public void channelReadComplete(ChannelHandlerContext ctx) throws Exception {
-        if (read) {
-            // Something was read. We should notify the next handlers in the pipeline.
-            read = false;
-            ctx.fireChannelReadComplete();
-        }
     }
 
     @Override
@@ -262,8 +252,6 @@ public class SpdyFrameCodec extends ByteToMessageDecoder
 
     @Override
     public void readDataFrame(int streamId, boolean last, ByteBuf data) {
-        read = true;
-
         SpdyDataFrame spdyDataFrame = new DefaultSpdyDataFrame(streamId, data);
         spdyDataFrame.setLast(last);
         ctx.fireChannelRead(spdyDataFrame);
@@ -272,8 +260,6 @@ public class SpdyFrameCodec extends ByteToMessageDecoder
     @Override
     public void readSynStreamFrame(
             int streamId, int associatedToStreamId, byte priority, boolean last, boolean unidirectional) {
-        read = true;
-
         SpdySynStreamFrame spdySynStreamFrame = new DefaultSpdySynStreamFrame(streamId, associatedToStreamId, priority);
         spdySynStreamFrame.setLast(last);
         spdySynStreamFrame.setUnidirectional(unidirectional);
@@ -282,8 +268,6 @@ public class SpdyFrameCodec extends ByteToMessageDecoder
 
     @Override
     public void readSynReplyFrame(int streamId, boolean last) {
-        read = true;
-
         SpdySynReplyFrame spdySynReplyFrame = new DefaultSpdySynReplyFrame(streamId);
         spdySynReplyFrame.setLast(last);
         spdyHeadersFrame = spdySynReplyFrame;
@@ -291,31 +275,23 @@ public class SpdyFrameCodec extends ByteToMessageDecoder
 
     @Override
     public void readRstStreamFrame(int streamId, int statusCode) {
-        read = true;
-
         SpdyRstStreamFrame spdyRstStreamFrame = new DefaultSpdyRstStreamFrame(streamId, statusCode);
         ctx.fireChannelRead(spdyRstStreamFrame);
     }
 
     @Override
     public void readSettingsFrame(boolean clearPersisted) {
-        read = true;
-
         spdySettingsFrame = new DefaultSpdySettingsFrame();
         spdySettingsFrame.setClearPreviouslyPersistedSettings(clearPersisted);
     }
 
     @Override
     public void readSetting(int id, int value, boolean persistValue, boolean persisted) {
-        read = true;
-
         spdySettingsFrame.setValue(id, value, persistValue, persisted);
     }
 
     @Override
     public void readSettingsEnd() {
-        read = true;
-
         Object frame = spdySettingsFrame;
         spdySettingsFrame = null;
         ctx.fireChannelRead(frame);
@@ -323,40 +299,30 @@ public class SpdyFrameCodec extends ByteToMessageDecoder
 
     @Override
     public void readPingFrame(int id) {
-        read = true;
-
         SpdyPingFrame spdyPingFrame = new DefaultSpdyPingFrame(id);
         ctx.fireChannelRead(spdyPingFrame);
     }
 
     @Override
     public void readGoAwayFrame(int lastGoodStreamId, int statusCode) {
-        read = true;
-
         SpdyGoAwayFrame spdyGoAwayFrame = new DefaultSpdyGoAwayFrame(lastGoodStreamId, statusCode);
         ctx.fireChannelRead(spdyGoAwayFrame);
     }
 
     @Override
     public void readHeadersFrame(int streamId, boolean last) {
-        read = true;
-
         spdyHeadersFrame = new DefaultSpdyHeadersFrame(streamId);
         spdyHeadersFrame.setLast(last);
     }
 
     @Override
     public void readWindowUpdateFrame(int streamId, int deltaWindowSize) {
-        read = true;
-
         SpdyWindowUpdateFrame spdyWindowUpdateFrame = new DefaultSpdyWindowUpdateFrame(streamId, deltaWindowSize);
         ctx.fireChannelRead(spdyWindowUpdateFrame);
     }
 
     @Override
     public void readHeaderBlock(ByteBuf headerBlock) {
-        read = true;
-
         try {
             spdyHeaderBlockDecoder.decode(ctx.alloc(), headerBlock, spdyHeadersFrame);
         } catch (Exception e) {
@@ -368,8 +334,6 @@ public class SpdyFrameCodec extends ByteToMessageDecoder
 
     @Override
     public void readHeaderBlockEnd() {
-        read = true;
-
         Object frame = null;
         try {
             spdyHeaderBlockDecoder.endHeaderBlock(spdyHeadersFrame);
@@ -385,8 +349,6 @@ public class SpdyFrameCodec extends ByteToMessageDecoder
 
     @Override
     public void readFrameError(String message) {
-        read = true;
-
         ctx.fireExceptionCaught(INVALID_FRAME);
     }
 }
