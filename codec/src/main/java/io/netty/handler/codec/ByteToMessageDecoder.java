@@ -69,7 +69,6 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
 
     ByteBuf cumulation;
     private boolean singleDecode;
-    private boolean decodeWasNull = true;
     private boolean first;
 
     protected ByteToMessageDecoder() {
@@ -176,11 +175,6 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
                     cumulation = null;
                 }
                 int size = out.size();
-                if (size > 0 && decodeWasNull) {
-                    // channelRead(...) may be called multiple times before channelReadComplete(...) was called.
-                    // If at least one message  was decoded, decodeWasNull must be set to false.
-                    decodeWasNull = false;
-                }
 
                 for (int i = 0; i < size; i ++) {
                     ctx.fireChannelRead(out.get(i));
@@ -211,15 +205,7 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
             // - https://github.com/netty/netty/issues/1764
             cumulation.discardSomeReadBytes();
         }
-        if (decodeWasNull) {
-            decodeWasNull = false;
-            if (!ctx.channel().config().isAutoRead()) {
-                ctx.read();
-            }
-        } else {
-            // Something was read. Trigger channelReadComplete().
-            ctx.fireChannelReadComplete();
-        }
+        ctx.fireChannelReadComplete();
     }
 
     @Override

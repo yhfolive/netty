@@ -354,6 +354,13 @@ abstract class AbstractChannelHandlerContext extends DefaultAttributeMap impleme
         if (channelReadCompletePending) {
             channelReadCompletePending = false;
             next.invokeChannelReadComplete();
+        } else if (!channel().config().isAutoRead() && next != pipeline.tail) {
+            // As this context not belongs to the last handler in the pipeline and autoRead is false we need to
+            // trigger read again as otherwise we may stop reading before a full message was passed on to the
+            // pipeline. This is especially true for all kind of decoders that usually buffer bytes/messages until
+            // they are able to compose a full message that is passed via fireChannelRead(...) and so be consumed
+            // be the rest of the handlers in the pipeline.
+            read();
         }
     }
 

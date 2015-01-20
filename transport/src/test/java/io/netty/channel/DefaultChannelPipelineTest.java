@@ -579,7 +579,6 @@ public class DefaultChannelPipelineTest {
                         readComplete1.incrementAndGet();
                         ctx.fireChannelReadComplete();
                     }
-
                 });
                 ch.pipeline().addLast(group, new ChannelInboundHandlerAdapter() {
                     @Override
@@ -602,7 +601,6 @@ public class DefaultChannelPipelineTest {
             }
         });
 
-
         ch.writeInbound(1);
         ch.writeInbound(2);
         ch.writeInbound(3);
@@ -621,6 +619,167 @@ public class DefaultChannelPipelineTest {
         if (group != null) {
             group.shutdownGracefully();
         }
+    }
+
+    @Test
+    public void testChannelReadTriggered() {
+        final AtomicInteger read1 = new AtomicInteger();
+        final AtomicInteger channelRead1 = new AtomicInteger();
+        final AtomicInteger channelReadComplete1 = new AtomicInteger();
+        final AtomicInteger read2 = new AtomicInteger();
+        final AtomicInteger channelRead2 = new AtomicInteger();
+        final AtomicInteger channelReadComplete2 = new AtomicInteger();
+        final AtomicInteger read3 = new AtomicInteger();
+        final AtomicInteger channelRead3 = new AtomicInteger();
+        final AtomicInteger channelReadComplete3 = new AtomicInteger();
+
+        EmbeddedChannel ch = new EmbeddedChannel(new ChannelDuplexHandler() {
+            @Override
+            public void read(ChannelHandlerContext ctx) throws Exception {
+                read1.incrementAndGet();
+                ctx.read();
+            }
+
+            @Override
+            public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+                channelRead1.incrementAndGet();
+                ctx.fireChannelRead(msg);
+            }
+
+            @Override
+            public void channelReadComplete(ChannelHandlerContext ctx) throws Exception {
+                channelReadComplete1.incrementAndGet();
+                ctx.fireChannelReadComplete();
+            }
+        }, new ChannelDuplexHandler() {
+            @Override
+            public void read(ChannelHandlerContext ctx) throws Exception {
+                read2.incrementAndGet();
+                ctx.read();
+            }
+
+            @Override
+            public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+                // Consume
+                channelRead2.incrementAndGet();
+            }
+
+            @Override
+            public void channelReadComplete(ChannelHandlerContext ctx) throws Exception {
+                channelReadComplete2.incrementAndGet();
+                ctx.fireChannelReadComplete();
+            }
+        }, new ChannelDuplexHandler() {
+            @Override
+            public void read(ChannelHandlerContext ctx) throws Exception {
+                read3.incrementAndGet();
+                ctx.read();
+            }
+
+            @Override
+            public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+                channelRead3.incrementAndGet();
+                ctx.fireChannelRead(msg);
+            }
+
+            @Override
+            public void channelReadComplete(ChannelHandlerContext ctx) throws Exception {
+                channelReadComplete3.incrementAndGet();
+                ctx.fireChannelReadComplete();
+            }
+        });
+
+        ch.config().setAutoRead(false);
+
+        ch.writeInbound(1);
+        ch.writeInbound(2);
+        ch.writeInbound(3);
+        ch.finish();
+        assertEquals(4, read1.get());
+        assertEquals(3, channelRead1.get());
+        assertEquals(3, channelReadComplete1.get());
+
+        assertEquals(1, read2.get());
+        assertEquals(3, channelRead2.get());
+        assertEquals(3, channelReadComplete1.get());
+
+        assertEquals(1, read3.get());
+        assertEquals(0, channelRead3.get());
+        assertEquals(0, channelReadComplete3.get());
+
+        assertNull(ch.readInbound());
+    }
+
+    @Test
+    public void testChannelReadNotTriggeredWhenLast() throws Exception {
+        final AtomicInteger read1 = new AtomicInteger();
+        final AtomicInteger channelRead1 = new AtomicInteger();
+        final AtomicInteger channelReadComplete1 = new AtomicInteger();
+        final AtomicInteger read2 = new AtomicInteger();
+        final AtomicInteger channelRead2 = new AtomicInteger();
+        final AtomicInteger channelReadComplete2 = new AtomicInteger();
+
+        EmbeddedChannel ch = new EmbeddedChannel(new ChannelInboundHandlerAdapter());
+
+        // Ensure pipeline is really empty
+        ChannelPipeline pipeline = ch.pipeline();
+        while (pipeline.first() != null) {
+            pipeline.removeFirst();
+        }
+
+        pipeline.addLast(new ChannelDuplexHandler() {
+            @Override
+            public void read(ChannelHandlerContext ctx) throws Exception {
+                read1.incrementAndGet();
+                ctx.read();
+            }
+
+            @Override
+            public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+                channelRead1.incrementAndGet();
+                ctx.fireChannelRead(msg);
+            }
+
+            @Override
+            public void channelReadComplete(ChannelHandlerContext ctx) throws Exception {
+                channelReadComplete1.incrementAndGet();
+                ctx.fireChannelReadComplete();
+            }
+        }, new ChannelDuplexHandler() {
+            @Override
+            public void read(ChannelHandlerContext ctx) throws Exception {
+                read2.incrementAndGet();
+                ctx.read();
+            }
+
+            @Override
+            public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+                // Consume
+                channelRead2.incrementAndGet();
+            }
+
+            @Override
+            public void channelReadComplete(ChannelHandlerContext ctx) throws Exception {
+                channelReadComplete2.incrementAndGet();
+                ctx.fireChannelReadComplete();
+            }
+        });
+
+        ch.config().setAutoRead(false);
+
+        ch.writeInbound(1);
+        ch.writeInbound(2);
+        ch.writeInbound(3);
+        ch.finish();
+        assertEquals(0, read1.get());
+        assertEquals(3, channelRead1.get());
+        assertEquals(3, channelReadComplete1.get());
+
+        assertEquals(0, read2.get());
+        assertEquals(3, channelRead2.get());
+        assertEquals(3, channelReadComplete1.get());
+
+        assertNull(ch.readInbound());
     }
 
     private static int next(AbstractChannelHandlerContext ctx) {
