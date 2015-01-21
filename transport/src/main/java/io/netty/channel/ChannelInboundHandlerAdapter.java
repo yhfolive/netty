@@ -32,6 +32,15 @@ package io.netty.channel;
 public class ChannelInboundHandlerAdapter extends ChannelHandlerAdapter implements ChannelInboundHandler {
 
     /**
+     * Returns {@code true} if a {@link ChannelHandlerContext#read()} should be called automatically if
+     * {@link ChannelConfig#isAutoRead()} is {@code false} and {@link #channelRead(ChannelHandlerContext, Object msg)}
+     * does consume but not not produce any messages. Default is {@code false} to give the user the most flexibility.
+     */
+    protected boolean isTriggerRead() {
+        return false;
+    }
+
+    /**
      * Calls {@link ChannelHandlerContext#fireChannelRegistered()} to forward
      * to the next {@link ChannelInboundHandler} in the {@link ChannelPipeline}.
      *

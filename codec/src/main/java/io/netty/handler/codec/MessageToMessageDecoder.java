@@ -70,6 +70,11 @@ public abstract class MessageToMessageDecoder<I> extends ChannelInboundHandlerAd
         matcher = TypeParameterMatcher.get(inboundMessageType);
     }
 
+    @Override
+    protected final boolean isTriggerRead() {
+        return true;
+    }
+
     /**
      * Returns {@code true} if the given message should be handled. If {@code false} it will be passed to the next
      * {@link ChannelInboundHandler} in the {@link ChannelPipeline}.

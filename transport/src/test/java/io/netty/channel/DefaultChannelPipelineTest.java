@@ -653,6 +653,11 @@ public class DefaultChannelPipelineTest {
             }
         }, new ChannelDuplexHandler() {
             @Override
+            protected boolean isTriggerRead() {
+                return true;
+            }
+
+            @Override
             public void read(ChannelHandlerContext ctx) throws Exception {
                 read2.incrementAndGet();
                 ctx.read();
@@ -711,7 +716,7 @@ public class DefaultChannelPipelineTest {
     }
 
     @Test
-    public void testChannelReadNotTriggeredWhenLast() throws Exception {
+    public void testChannelReadNotTriggeredByDefault() throws Exception {
         final AtomicInteger read1 = new AtomicInteger();
         final AtomicInteger channelRead1 = new AtomicInteger();
         final AtomicInteger channelReadComplete1 = new AtomicInteger();

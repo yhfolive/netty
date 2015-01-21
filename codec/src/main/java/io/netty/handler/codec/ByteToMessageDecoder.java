@@ -75,6 +75,11 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
         CodecUtil.ensureNotSharable(this);
     }
 
+    @Override
+    protected final boolean isTriggerRead() {
+        return true;
+    }
+
     /**
      * If set then only one message is decoded on each {@link #channelRead(ChannelHandlerContext, Object)}
      * call. This may be useful if you need to do some protocol upgrade and want to make sure nothing is mixed up.

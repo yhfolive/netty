@@ -20,6 +20,7 @@ import io.netty.util.concurrent.EventExecutorGroup;
 final class DefaultChannelHandlerContext extends AbstractChannelHandlerContext {
 
     private final ChannelHandler handler;
+    private final boolean triggerRead;
 
     DefaultChannelHandlerContext(
             DefaultChannelPipeline pipeline, EventExecutorGroup group, String name, ChannelHandler handler) {
@@ -28,6 +29,8 @@ final class DefaultChannelHandlerContext extends AbstractChannelHandlerContext {
             throw new NullPointerException("handler");
         }
         this.handler = handler;
+        triggerRead = handler instanceof ChannelInboundHandlerAdapter
+                && ((ChannelInboundHandlerAdapter) handler).isTriggerRead();
     }
 
     @Override
@@ -41,5 +44,10 @@ final class DefaultChannelHandlerContext extends AbstractChannelHandlerContext {
 
     private static boolean isOutbound(ChannelHandler handler) {
         return handler instanceof ChannelOutboundHandler;
+    }
+
+    @Override
+    protected boolean isTriggerRead() {
+        return triggerRead;
     }
 }
